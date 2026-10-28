@@ -27,7 +27,13 @@ test.describe('the attributes of allowed cookies', () => {
     expect(theme?.details.join('\n')).toContain('lives for 365 days');
   });
 
-  test('SameSite=None that a header asks for is found', async ({ page, privacy }) => {
+  test('SameSite=None that a header asks for is found', async ({ page, privacy, browserName }) => {
+    // Chromium refuses SameSite=None without Secure, and WebKit does not keep a Secure cookie that
+    // comes over plain http, so there is no cookie to judge there (the rule judges kept cookies)
+    test.skip(
+      browserName === 'webkit',
+      'WebKit does not keep a Secure cookie from http://localhost',
+    );
     await open(page, '/samesite-none.html');
     const found = await privacy.check();
     expect(subjects(found, 'cookieAttributes')).toEqual(['cookie cross']);

@@ -206,10 +206,13 @@ describe('PrivacyReporter', () => {
   let directory: string;
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), 'privacy-guard-'));
+    // A run on GitHub has this set: no test may write into the summary of the real run
+    vi.stubEnv('GITHUB_STEP_SUMMARY', '');
   });
   afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   const testCase = (title: string) =>
@@ -267,6 +270,5 @@ describe('PrivacyReporter', () => {
     reporter.onTestEnd(testCase('one'), result([request('x.test', '/')]));
     reporter.onEnd({ status: 'passed' } as never);
     expect(readFileSync(summary, 'utf8')).toContain('## Privacy guard');
-    vi.unstubAllEnvs();
   });
 });

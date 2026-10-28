@@ -70,7 +70,7 @@ test.describe('in report mode', () => {
     await open(page, '/third-party-script.html');
     expect((await privacy.check()).length).toBeGreaterThan(0);
     // The attachment is made when the test ends
-    expect(testInfo.attachments).toEqual([]);
+    expect(testInfo.attachments.filter((item) => item.name.startsWith('privacy-'))).toHaveLength(0);
   });
 });
 

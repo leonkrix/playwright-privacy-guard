@@ -272,7 +272,14 @@ export function guardInPage(options: PageOptions): void {
     hook(proto('Navigator'), 'getBattery', technique('battery', 'getBattery'));
     // A page that tries many fonts is looking for the ones that are installed
     let probes = 0;
-    hook(proto('FontFaceSet'), 'check', (_self, _args) => {
+    // Older Chromium (before 130) has no global FontFaceSet, only the object behind document.fonts
+    let fontSet: object | undefined = proto('FontFaceSet');
+    try {
+      fontSet ??= Object.getPrototypeOf(document.fonts) as object;
+    } catch {
+      // No document.fonts here
+    }
+    hook(fontSet, 'check', (_self, _args) => {
       probes += 1;
       if (probes === 20) {
         send({ kind: 'fingerprint', technique: 'fonts', detail: 'many font checks', ...where() });

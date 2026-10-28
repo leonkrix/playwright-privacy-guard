@@ -230,6 +230,41 @@ await page.goto('/');
 await privacy.assertClean();
 ```
 
+## Command line
+
+No tests needed: point the guard at addresses and read what it finds. This is how the [trial on public pages](docs/survey.md) was made.
+
+```sh
+npx playwright-privacy-guard scan https://example.com
+npx playwright-privacy-guard scan https://staging.example.com/ https://staging.example.com/pricing --fail-on error
+npx playwright-privacy-guard scan --file pages.txt --format markdown --out privacy-report.md
+```
+
+Every address is opened in a fresh browser, left alone for four seconds and scrolled once, without clicks and without accepting anything. The report names every other origin, cookie and stored value, the company behind it where the dataset knows it, and the script that did it, like the failure message of a test. It needs Playwright and its browser (`npx playwright install chromium`).
+
+| Option                | What it does                                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--file <path>`       | More addresses, one per line (`#` starts a comment)                                                                   |
+| `--browser <name>`    | `chromium` (default), `firefox` or `webkit`                                                                           |
+| `--format <name>`     | `text` (default), `json`, `markdown` or `html`                                                                        |
+| `--out <path>`        | Write the report to a file instead of the console                                                                     |
+| `--fail-on <level>`   | `error` (default), `warn` or `never`: when the exit code is 1                                                         |
+| `--options <path>`    | A JSON file with the [options](#options) of the guard, for example `{ "allow": { "requests": ["cdn.example.com"] } }` |
+| `--all-rules`         | Also look at headers, the policy, fingerprinting and cookie attributes                                                |
+| `--wait <seconds>`    | How long to leave a page alone after the load (default 4)                                                             |
+| `--no-scroll`         | Do not scroll through the page                                                                                        |
+| `--timeout <seconds>` | How long a page may take to load (default 45)                                                                         |
+| `--device <name>`     | A [device of Playwright](https://playwright.dev/docs/emulation#devices), for example `"iPhone 13"`                    |
+
+The exit code is 0 when nothing at the level of `--fail-on` was found, 1 when something was, and 2 when the command was wrong or a page could not be loaded. The text report ends with the part of an options file that would allow what it found; give each entry a reason (`{ "match": "...", "reason": "..." }`) and the report lists it under "Allowed on purpose". In a pipeline:
+
+```yaml
+- run: npx playwright install --with-deps chromium
+- run: npx playwright-privacy-guard scan https://staging.example.com --options privacy-guard.json
+```
+
+A page that blocks automated browsers (a bot wall answers 403) is reported as it answers.
+
 ## What it does and does not catch
 
 It sees what Playwright and a few hooks in the page can see:

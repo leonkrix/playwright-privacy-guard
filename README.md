@@ -187,6 +187,8 @@ test('accepting the banner', async ({ page, privacy }) => {
 
   It writes `privacy-report/index.html`, `summary.md` and `summary.json`, and adds the table to the summary of a GitHub Actions run (`GITHUB_STEP_SUMMARY`).
 
+  Tests that are meant to fail (`test.fail()`) are left out, and `{ ignore: [/canary/] }` leaves out tests by title, for the ones that make a page misbehave on purpose.
+
 ### Adopting it in a project that leaks today
 
 1. Start with `mode: 'report'`. Nothing fails, and you see everything in the reports.
@@ -227,6 +229,7 @@ It sees what Playwright and a few hooks in the page can see:
 - **Cookies** from the browser and from the headers of every response. A `Set-Cookie` that the browser refuses (for example a `Secure` cookie over `http:`) is reported as one the browser did not keep.
 - **Storage**: the calls to `setItem`, `indexedDB.open`, `caches.open` and `serviceWorker.register` with the script that made them, and the state of every frame at the end. A write like `localStorage.key = 1` has no call to hook; the state at the end still finds it. Pages that were closed during the test are covered by the calls only.
 - **Firefox and WebKit** ignore a less strict `Referrer-Policy` across sites, so the `referrer` rule finds fewer cases there; that is the browser protecting the visitor.
+- **A link to another website** that opens in a new tab is the page leaving the site: what that website does (its requests, its cookies) is not a leak of yours and is left out. A new tab on your own site is judged like any page. The page itself is still judged, and so is a link that you follow in the same tab (the test chose to go there, and the next page is judged on its own).
 - It looks at the page **in the test**, in the state the test leaves it in. A cookie that only appears after a purchase is found by a test that makes the purchase.
 - It cannot see what happens on the server (what your backend sends to a third party), in a native app, or in browser extensions.
 - A page can detect and defeat the hooks. The guard is meant to catch mistakes, not an adversary.

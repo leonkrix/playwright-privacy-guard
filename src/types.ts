@@ -221,7 +221,15 @@ export type PageEvent =
     };
 
 /** Everything the guard sees, in the order it happened. Rules are pure functions over these. */
-export type Observation = { at: number; page: string; frame: string } & (
+export type Observation = {
+  at: number;
+  page: string;
+  frame: string;
+  /** Which page of the test it was (the guard numbers them) */
+  pageId?: number;
+  /** The page was opened by another page (a link with `target="_blank"`, `window.open`) */
+  popup?: boolean;
+} & (
   | {
       kind: 'request';
       url: string;

@@ -96,7 +96,27 @@ export async function installPrivacyGuard(
   let lastSnapshot: StateSnapshot | undefined;
   // The address of each page as the test navigated it: the origin that counts as the page's own
   const current = new WeakMap<Page, string>();
+  // Pages are numbered, and the ones that another page opened are remembered (see away.ts)
+  const numbers = new WeakMap<Page, number>();
+  const popups = new Set<number>();
+  let nextNumber = 0;
+  // Requests whose page was not known yet (the first request of a new tab), asked again later
+  const unplaced: { observation: Observation; request: Request }[] = [];
   const watching = resolved.watch.length > 0;
+
+  const numberOf = (page: Page): number => {
+    let number = numbers.get(page);
+    if (number === undefined) {
+      nextNumber += 1;
+      number = nextNumber;
+      numbers.set(page, number);
+    }
+    return number;
+  };
+
+  /** The fields that say which page an observation belongs to */
+  const whereIs = (page: Page | undefined): { page: string; pageId?: number } =>
+    page === undefined ? { page: pageUrl(page) } : { page: pageUrl(page), pageId: numberOf(page) };
 
   const pageUrl = (page: Page | undefined): string => {
     if (page === undefined) {
@@ -129,8 +149,10 @@ export async function installPrivacyGuard(
     safely((request: Request) => {
       const place = placeOf(request);
       const top = place?.frame.parentFrame() === null ? place : undefined;
-      const navigation = request.isNavigationRequest() && top !== undefined;
-      if (navigation) {
+      // The first request of a new tab is made before its frame exists: that is a navigation too
+      const navigation =
+        request.isNavigationRequest() && (top !== undefined || place === undefined);
+      if (top !== undefined && request.isNavigationRequest()) {
         current.set(top.page, request.url());
       }
       const origin = parseUrl(request.url())?.origin;
@@ -140,7 +162,7 @@ export async function installPrivacyGuard(
       const observation: Extract<Observation, { kind: 'request' }> = {
         kind: 'request',
         at: now(),
-        page: pageUrl(place?.page),
+        ...whereIs(place?.page),
         frame: place?.frame.url() ?? '',
         url: request.url(),
         method: request.method(),
@@ -149,6 +171,9 @@ export async function installPrivacyGuard(
         ...(body === undefined ? {} : { body }),
       };
       add(observation);
+      if (place === undefined) {
+        unplaced.push({ observation, request });
+      }
       if (crossOrigin) {
         // The headers of a request are complete only when Playwright is asked for all of them
         const reading = request
@@ -174,7 +199,7 @@ export async function installPrivacyGuard(
       const observation: Extract<Observation, { kind: 'response' }> = {
         kind: 'response',
         at: now(),
-        page: pageUrl(place?.page),
+        ...whereIs(place?.page),
         frame: place?.frame.url() ?? '',
         url: response.url(),
         status: response.status(),
@@ -183,6 +208,9 @@ export async function installPrivacyGuard(
         headers: {},
       };
       add(observation);
+      if (place === undefined) {
+        unplaced.push({ observation, request });
+      }
       // The headers come in a second step; check() waits for them
       const reading = response
         .headersArray()
@@ -212,7 +240,7 @@ export async function installPrivacyGuard(
       add({
         kind: 'request-failed',
         at: now(),
-        page: pageUrl(place?.page),
+        ...whereIs(place?.page),
         frame: place?.frame.url() ?? '',
         url: request.url(),
         error: request.failure()?.errorText ?? 'failed',
@@ -228,7 +256,7 @@ export async function installPrivacyGuard(
       add({
         kind: 'console',
         at: now(),
-        page: pageUrl(page ?? undefined),
+        ...whereIs(page ?? undefined),
         frame: '',
         type: message.type(),
         text: message.text(),
@@ -244,7 +272,7 @@ export async function installPrivacyGuard(
         add({
           kind: 'page-error',
           at: now(),
-          page: pageUrl(page),
+          ...whereIs(page),
           frame: '',
           message: error.message,
           stack: error.stack ?? '',
@@ -257,7 +285,7 @@ export async function installPrivacyGuard(
         add({
           kind: 'request',
           at: now(),
-          page: pageUrl(page),
+          ...whereIs(page),
           frame: page.url(),
           url: socket.url(),
           method: 'GET',
@@ -267,7 +295,23 @@ export async function installPrivacyGuard(
       }),
     );
   };
-  context.on('page', attach);
+  /** A page that another page opened is a popup: asking is asynchronous, check() waits for it */
+  const watchOpener = (page: Page): void => {
+    const reading = page
+      .opener()
+      .then((opener) => {
+        if (opener !== null) {
+          popups.add(numberOf(page));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => pending.delete(reading));
+    pending.add(reading);
+  };
+  context.on('page', (page) => {
+    attach(page);
+    watchOpener(page);
+  });
   for (const page of context.pages()) {
     attach(page);
   }
@@ -277,7 +321,7 @@ export async function installPrivacyGuard(
     add({
       kind: 'page',
       at: now(),
-      page: pageUrl(source.page),
+      ...whereIs(source.page),
       frame: source.frame.url(),
       event,
     });
@@ -296,8 +340,30 @@ export async function installPrivacyGuard(
   };
   await context.addInitScript(guardInPage, forPage);
 
-  const judge = (snapshot: StateSnapshot | undefined): Finding[] =>
-    evaluate(observations, snapshot, createContext(resolved, baseOrigin, allowances));
+  /** By now the frame of a new tab exists: say which page those first requests belonged to */
+  const placeTheUnplaced = (): void => {
+    for (let index = unplaced.length - 1; index >= 0; index -= 1) {
+      const entry = unplaced[index];
+      const place = entry === undefined ? undefined : placeOf(entry.request);
+      if (entry !== undefined && place !== undefined) {
+        Object.assign(entry.observation, whereIs(place.page), { frame: place.frame.url() });
+        unplaced.splice(index, 1);
+      }
+    }
+  };
+
+  const judge = (snapshot: StateSnapshot | undefined): Finding[] => {
+    placeTheUnplaced();
+    const seen =
+      popups.size === 0
+        ? observations
+        : observations.map((observation) =>
+            observation.pageId !== undefined && popups.has(observation.pageId)
+              ? { ...observation, popup: true }
+              : observation,
+          );
+    return evaluate(seen, snapshot, createContext(resolved, baseOrigin, allowances));
+  };
 
   const check = async (): Promise<Finding[]> => {
     await Promise.all([...pending]);

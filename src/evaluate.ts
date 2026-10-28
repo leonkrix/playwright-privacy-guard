@@ -1,3 +1,4 @@
+import { withoutAwayPages } from './away.js';
 import type { Context } from './context.js';
 import {
   apisRule,
@@ -33,10 +34,11 @@ export function sortFindings(findings: Finding[]): Finding[] {
  * and options always give the same findings.
  */
 export function evaluate(
-  observations: readonly Observation[],
-  snapshot: StateSnapshot | undefined,
+  all: readonly Observation[],
+  state: StateSnapshot | undefined,
   context: Context,
 ): Finding[] {
+  const { observations, snapshot } = withoutAwayPages(all, state, context);
   return sortFindings([
     ...requestsRule(observations, context),
     ...insecureRule(observations, context),

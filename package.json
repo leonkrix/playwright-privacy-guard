@@ -1,6 +1,6 @@
 {
   "name": "playwright-privacy-guard",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A Playwright fixture that fails a test when a page talks to other origins, sets cookies, stores data on the device, breaks its Content Security Policy or logs errors. Names the host, the cookie or the script, and how to allow it.",
   "keywords": [
     "playwright",

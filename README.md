@@ -280,6 +280,15 @@ It sees what Playwright and a few hooks in the page can see:
 
 This is a test tool, not legal advice. A green run does not mean that a privacy policy is correct.
 
+## Ideas
+
+Not promises, and in no particular order. If one of them would help you, [open an issue](https://github.com/leonkrix/playwright-privacy-guard/issues) and say what you test.
+
+- **The script behind a request** in Chromium (which script made it), through the DevTools protocol. It would be a code path for one browser only, so it is not planned.
+- **The command line**: several addresses at once, the addresses from a sitemap, and a command that writes a first options file from a scan.
+- **Variants of `expect(privacy).toBeClean()`**, for example for one rule only.
+- **Checks outside the page**: that `robots.txt` and `security.txt` exist and say what the site promises.
+
 ## How well does it work on real pages?
 
 The package was tried on 29 public pages (sites that say they do not track, documentation sites, news sites) in Chromium, Firefox and WebKit, next to a record of the same page made without the package: every request, cookie and storage key the browser itself reports. [The survey](docs/survey.md) has the numbers, what the first version got wrong and what stays a finding on purpose. The script is in `scripts/survey.mjs`.

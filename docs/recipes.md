@@ -7,6 +7,7 @@ Short answers to "my test fails, what now?". The first question is always the sa
 | An API or a CDN that the page needs                | [`allow.requests`](#an-api-or-a-cdn-the-page-needs)                                |
 | Several subdomains of your own site                | [`firstParty`](#your-own-subdomains)                                               |
 | A cookie or a storage key the site needs           | [`allow.cookies`, `allow.localStorage`](#a-cookie-or-a-key-the-site-needs)         |
+| An allowed cookie must still be safe               | [`cookieAttributes`](#a-cookie-that-is-allowed-must-still-be-safe)                 |
 | A page that answers 404 on purpose                 | [`allow.errors`](#a-page-that-answers-404-on-purpose)                              |
 | Nothing may load before the visitor accepts        | [`privacy.assertClean()` and `privacy.allow()`](#consent-nothing-before-the-click) |
 | A test must not put an e-mail address in a request | [`watch`](#a-value-that-must-not-leave)                                            |
@@ -56,6 +57,21 @@ test.use({
 ```
 
 A cookie that was there before the test (from `storageState`, a stored login) is not the page's doing and is left alone, as long as its value is unchanged.
+
+## A cookie that is allowed must still be safe
+
+An allowed cookie is not looked at by the `cookies` rule any more. For the ones that identify a visitor, ask for more:
+
+```ts
+test.use({
+  privacyGuard: {
+    allow: { cookies: ['session', 'theme'] },
+    cookieAttributes: { httpOnly: ['session*'], maxDays: 365 },
+  },
+});
+```
+
+Now `session` must be `HttpOnly`, no allowed cookie may be set with `SameSite=None` or live longer than a year, and every allowed cookie must be `Secure` (a cookie on `localhost` is never asked for that, a test server has no https). These are warnings, switch them to errors with `rules: { cookieAttributes: 'error' }`.
 
 ## A page that answers 404 on purpose
 
@@ -176,4 +192,4 @@ Prefer an `allow` list. A test with the guard off watches nothing at all.
 reporter: [['list'], ['playwright-privacy-guard/reporter']],
 ```
 
-Writes `privacy-report/index.html`: one row per problem, with the pages and tests it was seen on. In GitHub Actions the same table lands in the summary of the run.
+Writes `privacy-report/index.html`: one row per problem, with the pages and tests it was seen on, and a table **Allowed on purpose** with every allow entry that was used and its reason. In GitHub Actions the same tables land in the summary of the run. Tests that fail on purpose (`test.fail()`) are left out; `{ ignore: [/canary/] }` leaves out tests by title.

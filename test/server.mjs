@@ -30,6 +30,7 @@ const siteHeaders = {
   '/set-cookie.html': {
     'set-cookie': ['session=abc123; Path=/; HttpOnly', 'theme=dark; Path=/; Max-Age=31536000'],
   },
+  '/samesite-none.html': { 'set-cookie': 'cross=1; Path=/; SameSite=None; Secure' },
   '/delete-cookie.html': { 'set-cookie': 'old=; Path=/; Max-Age=0' },
   '/headers-good.html': {
     'strict-transport-security': 'max-age=63072000; includeSubDomains',

@@ -2,6 +2,7 @@ import { withoutAwayPages } from './away.js';
 import type { Context } from './context.js';
 import {
   apisRule,
+  cookieAttributesRule,
   cookiesRule,
   cspQualityRule,
   cspRule,
@@ -43,6 +44,7 @@ export function evaluate(
     ...requestsRule(observations, context),
     ...insecureRule(observations, context),
     ...cookiesRule(observations, snapshot, context),
+    ...cookieAttributesRule(observations, snapshot, context),
     ...storageRule(observations, snapshot, context),
     ...cspRule(observations, context),
     ...errorsRule(observations, context),

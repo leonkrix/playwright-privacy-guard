@@ -9,6 +9,7 @@ import { guardInPage, type PageOptions } from './page-script.js';
 import { readInitial, takeSnapshot } from './snapshot.js';
 import type {
   Allow,
+  AllowedUse,
   Finding,
   Observation,
   PageEvent,
@@ -26,6 +27,8 @@ export interface PrivacyReport {
   findings: Finding[];
   /** What the baseline file knows and accepts */
   known: Finding[];
+  /** What the allow entries let pass on purpose, with their reasons (also when nothing was found) */
+  allowed: AllowedUse[];
   counts: { errors: number; warnings: number };
   /** The paths of the pages the guard saw */
   pages: string[];
@@ -94,6 +97,7 @@ export async function installPrivacyGuard(
   let dropped = 0;
   let initial = await readInitial(context);
   let lastSnapshot: StateSnapshot | undefined;
+  let lastAllowed: AllowedUse[] = [];
   // The address of each page as the test navigated it: the origin that counts as the page's own
   const current = new WeakMap<Page, string>();
   // Pages are numbered, and the ones that another page opened are remembered (see away.ts)
@@ -362,7 +366,10 @@ export async function installPrivacyGuard(
               ? { ...observation, popup: true }
               : observation,
           );
-    return evaluate(seen, snapshot, createContext(resolved, baseOrigin, allowances));
+    const context = createContext(resolved, baseOrigin, allowances);
+    const found = evaluate(seen, snapshot, context);
+    lastAllowed = context.allowedUses();
+    return found;
   };
 
   const check = async (): Promise<Finding[]> => {
@@ -411,6 +418,7 @@ export async function installPrivacyGuard(
         mode: resolved.mode,
         findings,
         known,
+        allowed: lastAllowed,
         counts: { errors, warnings: findings.length - errors },
         pages: [...new Set(all.map((found) => found.page))],
         observations: observations.length,

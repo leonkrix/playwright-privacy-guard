@@ -1,7 +1,7 @@
 import { test as base } from '@playwright/test';
 
 import { addToBaseline } from './baseline.js';
-import { formatFindings } from './format.js';
+import { formatAllowed, formatFindings } from './format.js';
 import { installPrivacyGuard, type PrivacyGuard } from './install.js';
 import { resolveOptions } from './options.js';
 import { renderHtml } from './report-html.js';
@@ -25,6 +25,7 @@ const off: PrivacyGuard = {
       mode: 'enforce',
       findings: [],
       known: [],
+      allowed: [],
       counts: { errors: 0, warnings: 0 },
       pages: [],
       observations: 0,
@@ -55,6 +56,13 @@ export const test = base.extend<PrivacyGuardFixtures>({
       await use(guard);
       const report = await guard.report();
       if (report.findings.length === 0 && report.known.length === 0) {
+        if (report.allowed.length > 0) {
+          // Nothing to read in this test, but the reporter lists what was allowed on purpose
+          await testInfo.attach('privacy-report.json', {
+            body: JSON.stringify(report),
+            contentType: 'application/json',
+          });
+        }
         return;
       }
       const resolved = resolveOptions(options);
@@ -72,7 +80,10 @@ export const test = base.extend<PrivacyGuardFixtures>({
         contentType: 'text/html',
       });
       const text = formatFindings(report.findings);
-      await testInfo.attach('privacy-report.txt', { body: text, contentType: 'text/plain' });
+      await testInfo.attach('privacy-report.txt', {
+        body: `${text}${formatAllowed(report.allowed)}`,
+        contentType: 'text/plain',
+      });
       for (const found of report.findings.filter((item) => item.level === 'warn')) {
         testInfo.annotations.push({
           type: 'privacy-guard warning',

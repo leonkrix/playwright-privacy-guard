@@ -1,9 +1,10 @@
-import type { AllowKey, Finding, RuleId } from './types.js';
+import type { AllowKey, AllowedUse, Finding, RuleId } from './types.js';
 
 const TITLES: Record<RuleId, string> = {
   requests: 'Requests to other origins',
   insecure: 'Requests without encryption',
   cookies: 'Cookies',
+  cookieAttributes: 'Weak attributes of allowed cookies',
   storage: 'Data stored on the device',
   csp: 'Content Security Policy violations',
   errors: 'Errors',
@@ -68,6 +69,21 @@ export function allowHint(findings: readonly Finding[]): string[] {
       : `${INDENT}${key}: [${values.map(quote).join(', ')}],`,
   );
   return ['  allow: {', ...lines, '  },'];
+}
+
+/** What the allow entries let pass on purpose, as lines to append to a report (empty when nothing). */
+export function formatAllowed(allowed: readonly AllowedUse[]): string {
+  if (allowed.length === 0) {
+    return '';
+  }
+  const lines = ['', '', `Allowed on purpose (${String(allowed.length)})`];
+  for (const use of allowed) {
+    const times = use.count > 1 ? ` (${String(use.count)}x)` : '';
+    lines.push(`  - ${TITLES[use.rule]}: ${use.what}${times}`);
+    lines.push(`${INDENT}allowed by: ${use.entry}`);
+    lines.push(`${INDENT}reason: ${use.reason ?? 'none given'}`);
+  }
+  return lines.join('\n');
 }
 
 /** The pages the findings were seen on */

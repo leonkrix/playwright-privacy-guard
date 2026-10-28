@@ -1,5 +1,5 @@
 import { describeTracker, titleOf } from './format.js';
-import type { Finding, RuleId } from './types.js';
+import type { AllowedUse, Finding, RuleId } from './types.js';
 
 export function escapeHtml(text: string): string {
   return text
@@ -65,6 +65,25 @@ export function renderGroups(findings: readonly Finding[]): string {
     .join('\n');
 }
 
+/** The list of what was allowed on purpose, with the reasons. */
+export function renderAllowed(allowed: readonly AllowedUse[]): string {
+  if (allowed.length === 0) {
+    return '';
+  }
+  return `<h2>Allowed on purpose (${String(allowed.length)})</h2>
+<table>
+<thead><tr><th>Rule</th><th>What</th><th>Allowed by</th><th>Reason</th><th>Times</th></tr></thead>
+<tbody>
+${allowed
+  .map(
+    (use) =>
+      `<tr><td>${escapeHtml(titleOf(use.rule))}</td><td>${escapeHtml(use.what)}</td><td><code>${escapeHtml(use.entry)}</code></td><td>${use.reason === undefined ? '<span class="muted">none given</span>' : escapeHtml(use.reason)}</td><td>${String(use.count)}</td></tr>`,
+  )
+  .join('\n')}
+</tbody>
+</table>`;
+}
+
 export function page(title: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -88,6 +107,7 @@ export interface ReportLike {
   mode: string;
   findings: readonly Finding[];
   known?: readonly Finding[];
+  allowed?: readonly AllowedUse[];
   counts: { errors: number; warnings: number };
   pages: readonly string[];
   dropped: number;
@@ -106,6 +126,7 @@ export function renderHtml(report: ReportLike, title = 'Privacy guard report'): 
   ${known > 0 ? `<div class="count"><b>${String(known)}</b>known (baseline)</div>` : ''}
 </div>
 ${report.dropped > 0 ? `<p class="muted">${String(report.dropped)} observations were not kept because maxObservations was reached.</p>` : ''}
-${renderGroups(report.findings)}`;
+${renderGroups(report.findings)}
+${renderAllowed(report.allowed ?? [])}`;
   return page(title, body);
 }

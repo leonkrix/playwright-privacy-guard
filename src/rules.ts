@@ -1,10 +1,11 @@
 import type { Context } from './context.js';
-import { matchesName, matchesText, matchesUrl } from './match.js';
+import { describeEntry, matchesName, matchesText, matchesUrl, toRule } from './match.js';
 import { describeSource, firstFrame, sourceOf } from './stack.js';
 import { trackerOf } from './trackers.js';
 import type {
   ApiName,
   CookieState,
+  Entry,
   Finding,
   Observation,
   PageEvent,
@@ -15,6 +16,32 @@ import type {
 import { checkPolicy, parsePolicy, type PolicyIssue } from './csp.js';
 import { checkHeaders, type HeaderIssue } from './headers.js';
 import { isLocalHost, isNetworkUrl, parseUrl, pathOf } from './urls.js';
+
+/**
+ * Says whether an entry of an allow list lets this pass, and remembers which entry (and its reason)
+ * for the list of what is allowed on purpose.
+ */
+function allowedBy<E extends Entry>(
+  context: Context,
+  use: { rule: RuleId; what: string; page: string; count?: number },
+  entries: readonly E[],
+  matches: (entry: E) => boolean,
+): boolean {
+  const entry = entries.find(matches);
+  if (entry === undefined) {
+    return false;
+  }
+  const { reason } = toRule(entry);
+  context.noteAllowed({
+    rule: use.rule,
+    what: use.what,
+    page: pathOf(use.page),
+    entry: describeEntry(entry),
+    ...(use.count === undefined ? {} : { count: use.count }),
+    ...(reason === undefined ? {} : { reason }),
+  });
+  return true;
+}
 
 type Request = Extract<Observation, { kind: 'request' }>;
 type Response = Extract<Observation, { kind: 'response' }>;
@@ -118,7 +145,14 @@ export function requestsRule(observations: readonly Observation[], context: Cont
       continue;
     }
     const allowed = context.allowAt(request.at).requests;
-    if (allowed.some((entry) => matchesUrl(entry, address))) {
+    if (
+      allowedBy(
+        context,
+        { rule: 'requests', what: address.host, page: request.page },
+        allowed,
+        (entry) => matchesUrl(entry, address),
+      )
+    ) {
       continue;
     }
     items.push({
@@ -190,7 +224,12 @@ export function insecureRule(observations: readonly Observation[], context: Cont
       address === undefined ||
       !['http:', 'ws:'].includes(address.protocol) ||
       isLocalHost(address.hostname) ||
-      context.allowAt(observation.at).insecure.some((entry) => matchesUrl(entry, address))
+      allowedBy(
+        context,
+        { rule: 'insecure', what: address.host, page: observation.page },
+        context.allowAt(observation.at).insecure,
+        (entry) => matchesUrl(entry, address),
+      )
     ) {
       return [];
     }
@@ -244,6 +283,21 @@ export function parseSetCookie(header: string): SetCookie | undefined {
     (maxAge !== undefined && Number(maxAge) <= 0) ||
     (expires !== undefined && Date.parse(expires) < Date.now());
   return { name, attributes, gone };
+}
+
+/** The cookies the browser holds at the end that were not there before the test. */
+function keptCookies(snapshot: StateSnapshot | undefined): CookieState[] {
+  const initial = snapshot?.initial.cookies ?? [];
+  return (snapshot?.cookies ?? []).filter(
+    (cookie) =>
+      !initial.some(
+        (before) =>
+          before.name === cookie.name &&
+          before.domain === cookie.domain &&
+          before.path === cookie.path &&
+          before.value === cookie.value,
+      ),
+  );
 }
 
 function describeCookie(cookie: CookieState): string[] {
@@ -306,27 +360,29 @@ export function cookiesRule(
       });
     }
   }
-  const initial = snapshot?.initial.cookies ?? [];
-  const kept = (snapshot?.cookies ?? []).filter(
-    (cookie) =>
-      !initial.some(
-        (before) =>
-          before.name === cookie.name &&
-          before.domain === cookie.domain &&
-          before.path === cookie.path &&
-          before.value === cookie.value,
-      ),
-  );
+  const kept = keptCookies(snapshot);
   const names = new Set<string>([
     ...seen.map((item) => item.name),
     ...kept.map((cookie) => cookie.name),
   ]);
   const findings: Finding[] = [];
   for (const name of names) {
-    if (allowed.some((entry) => matchesName(entry, name))) {
+    const events = seen.filter((item) => item.name === name);
+    if (
+      allowedBy(
+        context,
+        {
+          rule: 'cookies',
+          what: `cookie ${name}`,
+          page: events[0]?.page ?? '',
+          count: Math.max(1, events.length),
+        },
+        allowed,
+        (entry) => matchesName(entry, name),
+      )
+    ) {
       continue;
     }
-    const events = seen.filter((item) => item.name === name);
     const states = kept.filter((cookie) => cookie.name === name);
     const first = events[0];
     const page = first?.page ?? snapshot?.storage[0]?.page ?? '';
@@ -353,6 +409,77 @@ export function cookiesRule(
         ...(tracker === undefined ? {} : { tracker }),
         allow: { key: 'cookies', value: name },
         at: first?.at ?? 0,
+      }),
+    );
+  }
+  return findings;
+}
+
+// -------------------------------------------------------------------------------------------------
+// cookie attributes
+
+/**
+ * The cookies that are allowed are not looked at by the `cookies` rule any more, but a cookie that
+ * identifies a visitor should still be `Secure` and `HttpOnly`. This rule asks that of them.
+ */
+export function cookieAttributesRule(
+  observations: readonly Observation[],
+  snapshot: StateSnapshot | undefined,
+  context: Context,
+): Finding[] {
+  if (context.level('cookieAttributes') === 'off') {
+    return [];
+  }
+  const asked = context.options.cookieAttributes;
+  const allowed = context.allowAt(Number.POSITIVE_INFINITY).cookies;
+  // What the headers said, for the one thing the browser does not tell: a SameSite set on purpose
+  const sameSiteNone = new Set<string>();
+  for (const observation of observations) {
+    if (observation.kind === 'response') {
+      for (const header of observation.setCookies) {
+        const cookie = parseSetCookie(header);
+        if (cookie?.attributes.get('samesite')?.toLowerCase() === 'none') {
+          sameSiteNone.add(cookie.name);
+        }
+      }
+    }
+  }
+  const findings: Finding[] = [];
+  for (const cookie of keptCookies(snapshot)) {
+    if (!allowed.some((entry) => matchesName(entry, cookie.name))) {
+      continue;
+    }
+    const host = cookie.domain.replace(/^\./, '');
+    const problems: string[] = [];
+    if (asked.secure && !cookie.secure && !isLocalHost(host)) {
+      problems.push('it is not Secure: the browser also sends it over unencrypted http');
+    }
+    if (!cookie.httpOnly && asked.httpOnly.some((entry) => matchesName(entry, cookie.name))) {
+      problems.push('it is not HttpOnly: any script on the page can read it');
+    }
+    if (asked.noSameSiteNone && sameSiteNone.has(cookie.name)) {
+      problems.push(
+        'it is set with SameSite=None: the browser sends it on cross-site requests too',
+      );
+    }
+    const days =
+      cookie.expires === -1 ? 0 : Math.round((cookie.expires * 1000 - Date.now()) / 86_400_000);
+    if (asked.maxDays !== undefined && days > asked.maxDays) {
+      problems.push(
+        `it lives for ${String(days)} days, more than the ${String(asked.maxDays)} that are asked`,
+      );
+    }
+    if (problems.length === 0) {
+      continue;
+    }
+    findings.push(
+      ...finding(context, 'cookieAttributes', {
+        subject: `cookie ${cookie.name}`,
+        summary: `the allowed cookie "${cookie.name}" is weak: ${problems[0] ?? ''}`,
+        details: [...problems.slice(1), ...describeCookie(cookie)],
+        count: 1,
+        page: pathOf(snapshot?.storage[0]?.page ?? ''),
+        at: 0,
       }),
     );
   }
@@ -442,7 +569,19 @@ export function storageRule(
     if (first.area === 'serviceWorker' && allowedAt.serviceWorkers) {
       continue;
     }
-    if (allowedEntries(first.area).some((entry) => matchesName(entry, first.key))) {
+    if (
+      allowedBy(
+        context,
+        {
+          rule: 'storage',
+          what: `${AREA_TITLES[first.area]} "${first.key}"`,
+          page: first.page,
+          count: list.length,
+        },
+        allowedEntries(first.area),
+        (entry) => matchesName(entry, first.key),
+      )
+    ) {
       continue;
     }
     const written = list.find((item) => item.source !== undefined) ?? first;
@@ -479,7 +618,12 @@ export function cspRule(observations: readonly Observation[], context: Context):
   }
   const events = pageEvents(observations, 'csp').filter((observation) => {
     const text = `${observation.event.directive} ${observation.event.blocked}`;
-    return !context.allowAt(observation.at).csp.some((entry) => matchesText(entry, text));
+    return !allowedBy(
+      context,
+      { rule: 'csp', what: text, page: observation.page },
+      context.allowAt(observation.at).csp,
+      (entry) => matchesText(entry, text),
+    );
   });
   return [
     ...group(events, (item) => `${item.event.directive} ${item.event.blocked}`).entries(),
@@ -580,7 +724,19 @@ export function errorsRule(observations: readonly Observation[], context: Contex
         return [];
       }
       const allowed = context.allowAt(first.observation.at).errors;
-      if (allowed.some((entry) => matchesText(entry, first.text))) {
+      if (
+        allowedBy(
+          context,
+          {
+            rule: 'errors',
+            what: cut(first.text),
+            page: first.observation.page,
+            count: list.length,
+          },
+          allowed,
+          (entry) => matchesText(entry, first.text),
+        )
+      ) {
         return [];
       }
       return finding(context, 'errors', {
@@ -618,7 +774,13 @@ export function apisRule(observations: readonly Observation[], context: Context)
     return [];
   }
   const events = pageEvents(observations, 'api').filter(
-    (observation) => !context.allowAt(observation.at).apis.includes(observation.event.api),
+    (observation) =>
+      !allowedBy(
+        context,
+        { rule: 'apis', what: `API ${observation.event.api}`, page: observation.page },
+        context.allowAt(observation.at).apis,
+        (entry) => toRule(entry).match === observation.event.api,
+      ),
   );
   return [...group(events, (item) => item.event.api).entries()].flatMap(([api, list]) => {
     const first = list[0];
@@ -658,7 +820,16 @@ export function fingerprintRule(observations: readonly Observation[], context: C
   }
   const events = pageEvents(observations, 'fingerprint').filter(
     (observation) =>
-      !context.allowAt(observation.at).fingerprint.includes(observation.event.technique),
+      !allowedBy(
+        context,
+        {
+          rule: 'fingerprint',
+          what: `fingerprinting: ${observation.event.technique}`,
+          page: observation.page,
+        },
+        context.allowAt(observation.at).fingerprint,
+        (entry) => toRule(entry).match === observation.event.technique,
+      ),
   );
   return [...group(events, (item) => item.event.technique).entries()].flatMap(([name, list]) => {
     const first = list[0];

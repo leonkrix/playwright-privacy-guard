@@ -2,7 +2,7 @@ import { matchesUrl } from './match.js';
 import { mergeAllow } from './options.js';
 import type { ResolvedAllow, ResolvedOptions } from './options.js';
 import { parseUrl, redactUrl } from './urls.js';
-import type { Allow, Level, RuleId } from './types.js';
+import type { Allow, AllowedUse, Level, RuleId } from './types.js';
 
 /** An allow list that applies from a moment on (`privacy.allow()` in the middle of a test). */
 export interface Allowance {
@@ -22,6 +22,10 @@ export interface Context {
   show: (address: string) => string;
   /** Is this address the page's own, or an origin that the test counts as its own? */
   isFirstParty: (address: URL, page: string) => boolean;
+  /** Remembers that an allow entry let something pass, for the list of what is allowed on purpose */
+  noteAllowed: (use: Omit<AllowedUse, 'count'> & { count?: number }) => void;
+  /** What the allow entries let pass so far, most often first */
+  allowedUses: () => AllowedUse[];
 }
 
 const EMPTY: Allow = {};
@@ -32,6 +36,7 @@ export function createContext(
   allowances: readonly Allowance[] = [],
 ): Context {
   const cache = new Map<string, ResolvedAllow>();
+  const uses = new Map<string, AllowedUse>();
   const allowAt = (at: number): ResolvedAllow => {
     const active = allowances.filter((allowance) => allowance.at <= at);
     const key = String(active.length);
@@ -65,6 +70,22 @@ export function createContext(
     allowAt,
     level: (rule) => options.levels[rule],
     show: (address) => (options.redact ? redactUrl(address) : address),
+    noteAllowed: (use) => {
+      const key = `${use.rule}
+${use.what}
+${use.entry}`;
+      const { count = 1, ...rest } = use;
+      const known = uses.get(key);
+      if (known === undefined) {
+        uses.set(key, { ...rest, count });
+      } else {
+        known.count += count;
+      }
+    },
+    allowedUses: () =>
+      [...uses.values()].sort(
+        (a, b) => b.count - a.count || a.rule.localeCompare(b.rule) || a.what.localeCompare(b.what),
+      ),
     isFirstParty: (address, page) => {
       if (address.origin === parseUrl(page)?.origin || address.origin === baseOrigin) {
         return true;

@@ -6,6 +6,7 @@ export const RULE_IDS = [
   'requests',
   'insecure',
   'cookies',
+  'cookieAttributes',
   'storage',
   'csp',
   'errors',
@@ -72,10 +73,13 @@ export interface Allow {
   cacheStorage?: Entry[];
   /** Service workers may be registered */
   serviceWorkers?: boolean;
-  /** Sensitive APIs the page may use */
-  apis?: ApiName[];
-  /** Ways of recognising the browser that are fine (a game that reads pixels of its canvas) */
-  fingerprint?: FingerprintName[];
+  /** Sensitive APIs the page may use, by name or `{ match: name, reason }` */
+  apis?: Entry<ApiName>[];
+  /**
+   * Ways of recognising the browser that are fine (a game that reads pixels of its canvas), by name
+   * or `{ match: name, reason }`
+   */
+  fingerprint?: Entry<FingerprintName>[];
   /**
    * Errors that are fine. Tested against the text of the finding, for example
    * `404 http://localhost/missing.png` or the message of a console error.
@@ -88,6 +92,33 @@ export interface Allow {
 }
 
 export type AllowKey = keyof Allow;
+
+/** One thing the page did that an allow entry let pass: what the report lists as allowed on purpose. */
+export interface AllowedUse {
+  rule: RuleId;
+  /** What it was: a host, a cookie name, a key, an error text, an API name */
+  what: string;
+  /** The entry that allowed it, as text */
+  entry: string;
+  /** Why, when the entry says so */
+  reason?: string;
+  /** How often it happened */
+  count: number;
+  /** The path of the first page it happened on */
+  page: string;
+}
+
+/** What the `cookieAttributes` rule asks of the cookies that are allowed. */
+export interface CookieAttributeOptions {
+  /** An allowed cookie must be `Secure` (default true; not asked on machine-local hosts) */
+  secure?: boolean;
+  /** Names of cookies that must be `HttpOnly`, the ones that identify a visitor (`session*`) */
+  httpOnly?: Entry[];
+  /** An allowed cookie must not be set with `SameSite=None` (default true; only when it says so) */
+  noSameSiteNone?: boolean;
+  /** An allowed cookie must not live longer than this many days (default: no limit) */
+  maxDays?: number;
+}
 
 /** Names of the checks of response headers. */
 export type HeaderPreset = 'recommended' | 'strict';
@@ -112,6 +143,11 @@ export interface PrivacyGuardOptions {
   allow?: Allow;
   /** Level per rule (`error` fails the test, `warn` only reports, `off` does not look) */
   rules?: Partial<Record<RuleId, Level>>;
+  /**
+   * What is asked of the cookies that are allowed (the `cookieAttributes` rule, off until asked for
+   * with `rules: { cookieAttributes: 'warn' }` or by setting this).
+   */
+  cookieAttributes?: CookieAttributeOptions;
   /**
    * Values that must never reach a third party (an e-mail address you typed in, a name). Looked for in
    * the address, the headers and the body of every request to another origin.

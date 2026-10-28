@@ -122,9 +122,13 @@ export async function installPrivacyGuard(
   const whereIs = (page: Page | undefined): { page: string; pageId?: number } =>
     page === undefined ? { page: pageUrl(page) } : { page: pageUrl(page), pageId: numberOf(page) };
 
+  // A request that belongs to no page (a service worker fetching its own script) is judged against
+  // the page that was opened last: a site's own service worker is not a third party
+  let lastNavigated = '';
+
   const pageUrl = (page: Page | undefined): string => {
     if (page === undefined) {
-      return baseURL ?? '';
+      return baseURL ?? lastNavigated;
     }
     return current.get(page) ?? (page.isClosed() ? '' : page.url());
   };
@@ -158,6 +162,7 @@ export async function installPrivacyGuard(
         request.isNavigationRequest() && (top !== undefined || place === undefined);
       if (top !== undefined && request.isNavigationRequest()) {
         current.set(top.page, request.url());
+        lastNavigated = request.url();
       }
       const origin = parseUrl(request.url())?.origin;
       const crossOrigin = origin !== undefined && origin !== parseUrl(pageUrl(place?.page))?.origin;

@@ -8,3 +8,4 @@ playwright-report/
 !.vscode/extensions.json
 .DS_Store
 privacy-report/
+survey-results/

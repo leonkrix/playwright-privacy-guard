@@ -15,7 +15,7 @@ import type {
 } from './types.js';
 import { checkPolicy, parsePolicy, type PolicyIssue } from './csp.js';
 import { checkHeaders, type HeaderIssue } from './headers.js';
-import { isLocalHost, isNetworkUrl, parseUrl, pathOf } from './urls.js';
+import { isLocalHost, isNetworkUrl, parseUrl, pathOf, siteOf } from './urls.js';
 
 /**
  * Says whether an entry of an allow list lets this pass, and remembers which entry (and its reason)
@@ -126,6 +126,18 @@ function thirdPartyRequests(observations: readonly Observation[], context: Conte
   });
 }
 
+/** A subdomain of the website itself is another origin, which is often meant: say how to allow it */
+function siblingHint(host: string, page: string): string[] {
+  const own = parseUrl(page)?.hostname;
+  const name = host.replace(/:\d+$/, '');
+  if (own === undefined || own === name || siteOf(own) !== siteOf(name)) {
+    return [];
+  }
+  return [
+    `same website as the page: to allow all of it, firstParty: ['${siteOf(name)}', '*.${siteOf(name)}']`,
+  ];
+}
+
 export function requestsRule(observations: readonly Observation[], context: Context): Finding[] {
   if (context.level('requests') === 'off') {
     return [];
@@ -200,6 +212,7 @@ export function requestsRule(observations: readonly Observation[], context: Cont
         `kinds: ${countBy(list.map((item) => item.what))}`,
         `first: ${context.show(first.address)}`,
         ...(first.frame === '' ? [] : [`from: ${context.show(first.frame)}`]),
+        ...siblingHint(host, first.page),
       ],
       count: list.length,
       page: pathOf(first.page),
@@ -561,7 +574,9 @@ export function storageRule(
   }
   const allowedEntries = (area: Area) => (area === 'serviceWorker' ? [] : allowedAt[area]);
   const findings: Finding[] = [];
-  for (const [id, list] of group(seen, (item) => `${item.area} ${item.origin} ${item.key}`)) {
+  // A page that probes the storage with a new key every time (`test-1793221869894`) is one finding
+  const groupKey = (item: Seen): string => item.key.replace(/\d{6,}/g, '*');
+  for (const [id, list] of group(seen, (item) => `${item.area} ${item.origin} ${groupKey(item)}`)) {
     const first = list[0];
     if (first === undefined || id === '') {
       continue;
@@ -569,17 +584,19 @@ export function storageRule(
     if (first.area === 'serviceWorker' && allowedAt.serviceWorkers) {
       continue;
     }
+    const keys = [...new Set(list.map((item) => item.key))];
+    const key = keys.length > 1 ? groupKey(first) : first.key;
     if (
       allowedBy(
         context,
         {
           rule: 'storage',
-          what: `${AREA_TITLES[first.area]} "${first.key}"`,
+          what: `${AREA_TITLES[first.area]} "${key}"`,
           page: first.page,
           count: list.length,
         },
         allowedEntries(first.area),
-        (entry) => matchesName(entry, first.key),
+        (entry) => keys.every((item) => matchesName(entry, item)),
       )
     ) {
       continue;
@@ -588,10 +605,13 @@ export function storageRule(
     const tracker = trackerOf(parseUrl(first.origin)?.hostname ?? '');
     findings.push(
       ...finding(context, 'storage', {
-        subject: `${AREA_TITLES[first.area]} "${first.key}"`,
-        summary: `the page stores "${first.key}" in ${AREA_TITLES[first.area]}`,
+        subject: `${AREA_TITLES[first.area]} "${key}"`,
+        summary: `the page stores "${key}" in ${AREA_TITLES[first.area]}`,
         details: [
           `origin: ${first.origin}`,
+          ...(keys.length > 1
+            ? [`${String(keys.length)} keys that differ in a number, for example "${first.key}"`]
+            : []),
           ...[...new Set(list.map((item) => item.how))].slice(0, 3),
         ],
         count: list.length,
@@ -601,7 +621,7 @@ export function storageRule(
         allow:
           first.area === 'serviceWorker'
             ? { key: 'serviceWorkers', value: 'true' }
-            : { key: first.area, value: first.key },
+            : { key: first.area, value: key },
         at: written.at,
       }),
     );
@@ -658,7 +678,8 @@ export function cspRule(observations: readonly Observation[], context: Context):
 // -------------------------------------------------------------------------------------------------
 // errors
 
-const ABORTED = /ERR_ABORTED|NS_BINDING_ABORTED|cancel+ed|aborted/i;
+// NS_ERROR_PARSED_DATA_CACHED is how Firefox ends a media request whose data it already has
+const ABORTED = /ERR_ABORTED|NS_BINDING_ABORTED|NS_ERROR_PARSED_DATA_CACHED|cancel+ed|aborted/i;
 
 export function errorsRule(observations: readonly Observation[], context: Context): Finding[] {
   if (context.level('errors') === 'off') {

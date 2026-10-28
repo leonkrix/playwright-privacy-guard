@@ -6,6 +6,7 @@ import { evaluate } from './evaluate.js';
 import { formatAllowed } from './format.js';
 import { checkAllow, resolveOptions } from './options.js';
 import { renderHtml } from './report-html.js';
+import { siteOf } from './urls.js';
 import type {
   AllowedUse,
   CookieState,
@@ -118,6 +119,95 @@ describe('cookieAttributes', () => {
       'true or false',
     );
     expect(() => resolveOptions({ cookieAttributes: { nope: true } as never })).toThrow('nope');
+  });
+});
+
+describe('a subdomain of the website itself', () => {
+  const from = (url: string): Observation => ({
+    at: 1,
+    page: 'https://www.gnu.org/',
+    frame: 'https://www.gnu.org/',
+    kind: 'request',
+    url,
+    method: 'GET',
+    resourceType: 'image',
+    navigation: false,
+  });
+
+  it('is a request to another origin, with the way to allow the whole website', () => {
+    const { findings } = run({}, [from('https://static.gnu.org/logo.png')]);
+    expect(findings.map((item) => item.subject)).toEqual(['static.gnu.org']);
+    expect(findings[0]?.details.join('\n')).toContain("firstParty: ['gnu.org', '*.gnu.org']");
+    expect(
+      run({ firstParty: ['*.gnu.org'] }, [from('https://static.gnu.org/logo.png')]).findings,
+    ).toEqual([]);
+  });
+
+  it('says nothing for another website', () => {
+    const { findings } = run({}, [from('https://cdn.example.org/logo.png')]);
+    expect(findings[0]?.details.join('\n')).not.toContain('firstParty');
+  });
+
+  it('knows the registered domain of the usual hosts', () => {
+    expect(siteOf('static.gnu.org')).toBe('gnu.org');
+    expect(siteOf('www.bbc.co.uk')).toBe('bbc.co.uk');
+    expect(siteOf('localhost')).toBe('localhost');
+    expect(siteOf('127.0.0.1')).toBe('127.0.0.1');
+  });
+});
+
+describe('storage probes', () => {
+  const write = (key: string): Observation => ({
+    at: 1,
+    page: 'https://shop.example/',
+    frame: 'https://shop.example/',
+    kind: 'page',
+    event: { kind: 'storage-write', area: 'localStorage', key, stack: '' },
+  });
+
+  it('puts keys that differ only in a long number into one finding', () => {
+    const { findings } = run({}, [
+      write('test-1793221869894'),
+      write('test-1793221869895'),
+      write('test-1793221871323'),
+      write('theme'),
+    ]);
+    expect(findings.map((item) => item.subject)).toEqual([
+      'localStorage "test-*"',
+      'localStorage "theme"',
+    ]);
+    expect(findings[0]?.count).toBe(3);
+    expect(findings[0]?.allow).toEqual({ key: 'localStorage', value: 'test-*' });
+    expect(findings[0]?.details.join('\n')).toContain('3 keys that differ in a number');
+  });
+
+  it('is allowed by a pattern for all of them, not by one of them', () => {
+    const writes = [write('test-1793221869894'), write('test-1793221869895')];
+    expect(run({ allow: { localStorage: ['test-*'] } }, writes).findings).toEqual([]);
+    expect(run({ allow: { localStorage: ['test-1793221869894'] } }, writes).findings).toHaveLength(
+      1,
+    );
+  });
+
+  it('does not call the end of a media request in Firefox a failed request', () => {
+    const failed = (error: string): Observation => ({
+      at: 1,
+      page: 'https://shop.example/',
+      frame: 'https://shop.example/',
+      kind: 'request-failed',
+      url: 'https://shop.example/video.mp4',
+      error,
+    });
+    expect(run({}, [failed('NS_ERROR_PARSED_DATA_CACHED')]).findings).toEqual([]);
+    expect(run({}, [failed('NS_ERROR_NET_RESET')]).findings).toHaveLength(1);
+  });
+
+  it('does not change a key with a short number', () => {
+    const { findings } = run({}, [write('item-1'), write('item-2')]);
+    expect(findings.map((item) => item.subject)).toEqual([
+      'localStorage "item-1"',
+      'localStorage "item-2"',
+    ]);
   });
 });
 

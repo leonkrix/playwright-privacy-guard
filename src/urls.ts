@@ -45,3 +45,20 @@ export function isSecure(address: URL): boolean {
     address.protocol === 'https:' || address.protocol === 'wss:' || isLocalHost(address.hostname)
   );
 }
+
+const SECOND_LEVEL = new Set(['co', 'com', 'org', 'net', 'gov', 'edu', 'ac']);
+
+/**
+ * The registered domain of a host, guessed without a list of public suffixes: `gnu.org` for
+ * `static.gnu.org`, `bbc.co.uk` for `www.bbc.co.uk`. Good enough for a hint, not for a decision.
+ */
+export function siteOf(hostname: string): string {
+  const host = hostname.toLowerCase();
+  const labels = host.split('.');
+  const last = labels.at(-1) ?? '';
+  if (labels.length <= 2 || /^\d+$/.test(last)) {
+    return host;
+  }
+  const second = labels.at(-2) ?? '';
+  return labels.slice(SECOND_LEVEL.has(second) && last.length === 2 ? -3 : -2).join('.');
+}

@@ -245,6 +245,10 @@ It sees what Playwright and a few hooks in the page can see:
 
 This is a test tool, not legal advice. A green run does not mean that a privacy policy is correct.
 
+## How well does it work on real pages?
+
+The package was tried on 29 public pages (sites that say they do not track, documentation sites, news sites) in Chromium, Firefox and WebKit, next to a record of the same page made without the package: every request, cookie and storage key the browser itself reports. [The survey](docs/survey.md) has the numbers, what the first version got wrong and what stays a finding on purpose. The script is in `scripts/survey.mjs`.
+
 ## Data
 
 The names of companies come from [third-party-web](https://github.com/patrickhulce/third-party-web) by Patrick Hulce (MIT), whose data comes from the [HTTP Archive](https://httparchive.org). A trimmed copy is part of this package (about 100 KB); `pnpm trackers` makes it again.

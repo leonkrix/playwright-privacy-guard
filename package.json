@@ -76,6 +76,7 @@
     "test": "playwright test",
     "test:all-browsers": "ALL_BROWSERS=1 playwright test",
     "trackers": "node scripts/build-trackers.mjs",
+    "survey": "node scripts/survey.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release:tag": "node scripts/tag-release.mjs",

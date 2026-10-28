@@ -1,4 +1,4 @@
-import { toRule } from './match.js';
+import { describeEntry, toRule } from './match.js';
 import {
   API_NAMES,
   FINGERPRINT_NAMES,
@@ -20,6 +20,7 @@ export const DEFAULT_LEVELS: Readonly<Record<RuleId, Level>> = {
   requests: 'error',
   insecure: 'error',
   cookies: 'error',
+  cookieAttributes: 'warn',
   storage: 'error',
   csp: 'error',
   errors: 'error',
@@ -34,7 +35,12 @@ export const DEFAULT_LEVELS: Readonly<Record<RuleId, Level>> = {
 };
 
 /** The rules that look at nothing until they are asked to. */
-const OFF_UNTIL_ASKED: readonly RuleId[] = ['headers', 'cspQuality', 'fingerprint'];
+const OFF_UNTIL_ASKED: readonly RuleId[] = [
+  'headers',
+  'cspQuality',
+  'fingerprint',
+  'cookieAttributes',
+];
 
 export const DEFAULTS = {
   mode: 'enforce' as 'enforce' | 'report',
@@ -55,8 +61,16 @@ export interface ResolvedAllow {
   csp: Entry[];
   integrity: Entry[];
   serviceWorkers: boolean;
-  apis: ApiName[];
-  fingerprint: FingerprintName[];
+  apis: Entry<ApiName>[];
+  fingerprint: Entry<FingerprintName>[];
+}
+
+/** What the `cookieAttributes` rule asks, with the defaults filled in. */
+export interface ResolvedCookieAttributes {
+  secure: boolean;
+  httpOnly: Entry[];
+  noSameSiteNone: boolean;
+  maxDays: number | undefined;
 }
 
 /** The options with every default filled in and every value checked. */
@@ -67,6 +81,7 @@ export interface ResolvedOptions {
   levels: Record<RuleId, Level>;
   watch: (string | RegExp)[];
   headers: { preset: HeaderPreset | undefined; rules: HeaderRules | undefined } | undefined;
+  cookieAttributes: ResolvedCookieAttributes;
   redact: boolean;
   maxObservations: number;
   baseline: string | undefined;
@@ -135,24 +150,42 @@ export function checkAllow(allow: Allow | undefined, name = 'allow'): Allow {
     checked.serviceWorkers = allow.serviceWorkers;
   }
   if (allow.apis !== undefined) {
-    for (const api of allow.apis) {
-      if (!API_NAMES.includes(api)) {
-        fail(`${name}.apis has "${api as string}", which is not one of: ${API_NAMES.join(', ')}`);
+    for (const entry of allow.apis) {
+      const api = toRule(entry).match;
+      if (typeof api !== 'string' || !(API_NAMES as readonly string[]).includes(api)) {
+        fail(`${name}.apis has "${String(api)}", which is not one of: ${API_NAMES.join(', ')}`);
       }
     }
     checked.apis = [...allow.apis];
   }
   if (allow.fingerprint !== undefined) {
-    for (const name of allow.fingerprint) {
-      if (!FINGERPRINT_NAMES.includes(name)) {
+    for (const entry of allow.fingerprint) {
+      const technique = toRule(entry).match;
+      if (
+        typeof technique !== 'string' ||
+        !(FINGERPRINT_NAMES as readonly string[]).includes(technique)
+      ) {
         fail(
-          `${name2(name)} is not a way of recognising a browser (known: ${FINGERPRINT_NAMES.join(', ')})`,
+          `${name2(String(technique))} is not a way of recognising a browser (known: ${FINGERPRINT_NAMES.join(', ')})`,
         );
       }
     }
     checked.fingerprint = [...allow.fingerprint];
   }
   return checked;
+}
+
+/** The same entry (same match, same reason) once. */
+function unique<E extends Entry>(entries: E[]): E[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${describeEntry(entry)}|${toRule(entry).reason ?? ''}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Puts two allow lists together: everything of both is allowed. */
@@ -168,10 +201,10 @@ export function mergeAllow(base: Allow, extra: Allow): Allow {
     merged.serviceWorkers = true;
   }
   if (extra.apis !== undefined) {
-    merged.apis = [...new Set([...(base.apis ?? []), ...extra.apis])];
+    merged.apis = unique([...(base.apis ?? []), ...extra.apis]);
   }
   if (extra.fingerprint !== undefined) {
-    merged.fingerprint = [...new Set([...(base.fingerprint ?? []), ...extra.fingerprint])];
+    merged.fingerprint = unique([...(base.fingerprint ?? []), ...extra.fingerprint]);
   }
   return merged;
 }
@@ -204,6 +237,32 @@ function resolveHeaders(value: PrivacyGuardOptions['headers']): ResolvedOptions[
   return { preset: value.preset, rules: value.rules };
 }
 
+function resolveCookieAttributes(
+  value: PrivacyGuardOptions['cookieAttributes'],
+): ResolvedCookieAttributes {
+  const given = value ?? {};
+  const known = ['secure', 'httpOnly', 'noSameSiteNone', 'maxDays'];
+  for (const key of Object.keys(given)) {
+    if (!known.includes(key)) {
+      fail(`cookieAttributes.${key} is not a setting (known: ${known.join(', ')})`);
+    }
+  }
+  for (const key of ['secure', 'noSameSiteNone'] as const) {
+    if (given[key] !== undefined && typeof given[key] !== 'boolean') {
+      fail(`cookieAttributes.${key} must be true or false`);
+    }
+  }
+  if (given.maxDays !== undefined && !(Number.isFinite(given.maxDays) && given.maxDays > 0)) {
+    fail('cookieAttributes.maxDays must be a number of days above 0');
+  }
+  return {
+    secure: given.secure ?? true,
+    httpOnly: checkEntries('cookieAttributes.httpOnly', given.httpOnly),
+    noSameSiteNone: given.noSameSiteNone ?? true,
+    maxDays: given.maxDays,
+  };
+}
+
 /** Fills in the defaults and refuses values that cannot work. */
 export function resolveOptions(options: PrivacyGuardOptions = {}): ResolvedOptions {
   const mode: string = options.mode ?? DEFAULTS.mode;
@@ -217,6 +276,9 @@ export function resolveOptions(options: PrivacyGuardOptions = {}): ResolvedOptio
   if (options.headers !== undefined) {
     levels.headers = DEFAULT_LEVELS.headers;
     levels.cspQuality = DEFAULT_LEVELS.cspQuality;
+  }
+  if (options.cookieAttributes !== undefined) {
+    levels.cookieAttributes = DEFAULT_LEVELS.cookieAttributes;
   }
   for (const [rule, level] of Object.entries(options.rules ?? {})) {
     if (!(RULE_IDS as readonly string[]).includes(rule)) {
@@ -235,6 +297,7 @@ export function resolveOptions(options: PrivacyGuardOptions = {}): ResolvedOptio
     fail('baseline must be the path of a file');
   }
   const headers = resolveHeaders(options.headers);
+  const cookieAttributes = resolveCookieAttributes(options.cookieAttributes);
   const allow = checkAllow(options.allow);
   for (const value of options.watch ?? []) {
     if (typeof value === 'string' ? value === '' : !(value instanceof RegExp)) {
@@ -262,6 +325,7 @@ export function resolveOptions(options: PrivacyGuardOptions = {}): ResolvedOptio
     levels,
     watch: [...(options.watch ?? [])],
     headers,
+    cookieAttributes,
     baseline: options.baseline,
     redact: options.redact ?? DEFAULTS.redact,
     maxObservations,

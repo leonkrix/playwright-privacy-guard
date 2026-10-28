@@ -90,6 +90,8 @@ export default class PrivacyReporter implements Reporter {
       return;
     }
     const result = aggregate(this.entries, this.tests);
+    const allowedNote =
+      result.allowed.length > 0 ? ` ${String(result.allowed.length)} allowed on purpose.` : '';
     const directory = resolve(this.options.outputDir);
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, 'index.html'), renderSiteHtml(result));
@@ -109,7 +111,7 @@ export default class PrivacyReporter implements Reporter {
     }
     if (this.options.console) {
       console.log(
-        `Privacy guard: ${String(result.errors)} errors and ${String(result.warnings)} warnings in ${String(result.testsWithFindings)} of ${String(result.tests)} tests. Report: ${join(this.options.outputDir, 'index.html')}`,
+        `Privacy guard: ${String(result.errors)} errors and ${String(result.warnings)} warnings in ${String(result.testsWithFindings)} of ${String(result.tests)} tests.${allowedNote} Report: ${join(this.options.outputDir, 'index.html')}`,
       );
     }
   }

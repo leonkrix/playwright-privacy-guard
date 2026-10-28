@@ -81,6 +81,12 @@ export function matchesUrl(entry: Entry, address: URL): boolean {
   return host === wanted;
 }
 
+/** An entry as text for the report: the text, or the regular expression with its slashes. */
+export function describeEntry(entry: Entry): string {
+  const { match } = toRule(entry);
+  return typeof match === 'string' ? match : String(match);
+}
+
 /** The reason of the first entry that matches, `undefined` when none has one. */
 export function reasonFor(
   entries: readonly Entry[],

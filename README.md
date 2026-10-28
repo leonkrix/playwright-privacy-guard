@@ -68,22 +68,23 @@ Already have your own fixtures? Merge them: `mergeTests(base, privacyTest)`.
 
 ### What it checks
 
-| Rule          | What it finds                                                                                                   | Default |
-| ------------- | --------------------------------------------------------------------------------------------------------------- | ------- |
-| `requests`    | Requests to other origins: scripts, images, fetch, beacons, web sockets, workers, and link hints (`preconnect`) | error   |
-| `insecure`    | Requests over `http:` or `ws:` (not to localhost)                                                               | error   |
-| `cookies`     | Every cookie in the browser, and every `Set-Cookie` of a response, also one the browser rejected                | error   |
-| `storage`     | localStorage, sessionStorage, IndexedDB, Cache Storage and service workers: what was written and what is left   | error   |
-| `csp`         | Content Security Policy violations: what was blocked, by which directive, from which script                     | error   |
-| `errors`      | Console errors, uncaught exceptions, failed requests and HTTP 4xx/5xx                                           | error   |
-| `apis`        | Location, camera and microphone, screen capture, notifications, WebRTC, clipboard read, MIDI, Bluetooth, USB    | error   |
-| `forms`       | Forms and `ping` links that send to another origin                                                              | error   |
-| `leaks`       | Values you list in `watch` (a test e-mail address) found in a request to a third party                          | error   |
-| `referrer`    | An allowed third party that receives the full address of the page                                               | warn    |
-| `sri`         | An allowed third-party script or stylesheet without an `integrity` attribute                                    | warn    |
-| `headers`     | Response headers of your documents against a preset (`recommended`, `strict`) and rules of your own             | off     |
-| `cspQuality`  | A weak policy: `unsafe-inline`, `unsafe-eval`, wildcards, no `object-src`, `base-uri`, `frame-ancestors`        | off     |
-| `fingerprint` | Canvas read-back, graphics card name, audio rendering, battery, many font checks                                | off     |
+| Rule               | What it finds                                                                                                   | Default |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | ------- |
+| `requests`         | Requests to other origins: scripts, images, fetch, beacons, web sockets, workers, and link hints (`preconnect`) | error   |
+| `insecure`         | Requests over `http:` or `ws:` (not to localhost)                                                               | error   |
+| `cookies`          | Every cookie in the browser, and every `Set-Cookie` of a response, also one the browser rejected                | error   |
+| `cookieAttributes` | An allowed cookie that is not `Secure`, not `HttpOnly` (by name), set with `SameSite=None` or lives too long    | off     |
+| `storage`          | localStorage, sessionStorage, IndexedDB, Cache Storage and service workers: what was written and what is left   | error   |
+| `csp`              | Content Security Policy violations: what was blocked, by which directive, from which script                     | error   |
+| `errors`           | Console errors, uncaught exceptions, failed requests and HTTP 4xx/5xx                                           | error   |
+| `apis`             | Location, camera and microphone, screen capture, notifications, WebRTC, clipboard read, MIDI, Bluetooth, USB    | error   |
+| `forms`            | Forms and `ping` links that send to another origin                                                              | error   |
+| `leaks`            | Values you list in `watch` (a test e-mail address) found in a request to a third party                          | error   |
+| `referrer`         | An allowed third party that receives the full address of the page                                               | warn    |
+| `sri`              | An allowed third-party script or stylesheet without an `integrity` attribute                                    | warn    |
+| `headers`          | Response headers of your documents against a preset (`recommended`, `strict`) and rules of your own             | off     |
+| `cspQuality`       | A weak policy: `unsafe-inline`, `unsafe-eval`, wildcards, no `object-src`, `base-uri`, `frame-ancestors`        | off     |
+| `fingerprint`      | Canvas read-back, graphics card name, audio rendering, battery, many font checks                                | off     |
 
 A finding says **what** (the host, the cookie, the key), **who** when the company is known (about 2,100 products from the [third-party-web](https://github.com/patrickhulce/third-party-web) dataset: `Google Analytics, analytics`), **where it came from** (the script and line, or the frame and kind of request) and **how often**.
 
@@ -101,7 +102,7 @@ test.use({
       requests: ['api.example.com', { match: '*.stripe.com', reason: 'payments' }],
       cookies: ['session', '_csrf*'],
       localStorage: ['theme'],
-      apis: ['geolocation'],
+      apis: [{ match: 'geolocation', reason: 'the map asks where you are' }],
       // The 404 page of the site answers with a 404 on purpose
       errors: [/^404 http:\/\/localhost:\d+\/does-not-exist$/],
     },
@@ -132,19 +133,26 @@ test.use({ privacyGuard: false });
 
 ### Options
 
-| Option            | Default     | Meaning                                                                                                                                 |
-| ----------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode`            | `'enforce'` | `'report'` never fails a test: the report is attached and that is all. Use it to look before you commit to the rules                    |
-| `allow`           | nothing     | What the page may do, per rule (see below)                                                                                              |
-| `rules`           | see table   | `'error'` fails the test, `'warn'` only reports, `'off'` does not look: `rules: { referrer: 'off', fingerprint: 'warn' }`               |
-| `firstParty`      | `[]`        | Origins that count as your own besides the page and the `baseURL` (`['*.example.com']`)                                                 |
-| `watch`           | `[]`        | Values that must never reach a third party: `['jane@example.com', /\b4242\d{12}\b/]`                                                    |
-| `headers`         | off         | `'recommended'`, `'strict'` or `{ preset, rules }` where a rule is `'present'`, `'absent'`, a value, a regular expression or a function |
-| `baseline`        | none        | A file of known findings (see "Adopting it in a project that leaks today")                                                              |
-| `redact`          | `false`     | Keep query strings and values out of the report                                                                                         |
-| `maxObservations` | `5000`      | A page that makes more requests than this is cut off (the report says so)                                                               |
+| Option             | Default     | Meaning                                                                                                                                 |
+| ------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`             | `'enforce'` | `'report'` never fails a test: the report is attached and that is all. Use it to look before you commit to the rules                    |
+| `allow`            | nothing     | What the page may do, per rule (see below)                                                                                              |
+| `rules`            | see table   | `'error'` fails the test, `'warn'` only reports, `'off'` does not look: `rules: { referrer: 'off', fingerprint: 'warn' }`               |
+| `firstParty`       | `[]`        | Origins that count as your own besides the page and the `baseURL` (`['*.example.com']`)                                                 |
+| `watch`            | `[]`        | Values that must never reach a third party: `['jane@example.com', /\b4242\d{12}\b/]`                                                    |
+| `cookieAttributes` | off         | What is asked of the cookies that are allowed: `{ secure: true, httpOnly: ['session*'], noSameSiteNone: true, maxDays: 90 }`, see below |
+| `headers`          | off         | `'recommended'`, `'strict'` or `{ preset, rules }` where a rule is `'present'`, `'absent'`, a value, a regular expression or a function |
+| `baseline`         | none        | A file of known findings (see "Adopting it in a project that leaks today")                                                              |
+| `redact`           | `false`     | Keep query strings and values out of the report                                                                                         |
+| `maxObservations`  | `5000`      | A page that makes more requests than this is cut off (the report says so)                                                               |
 
 The lists of `allow`: `requests`, `insecure`, `cookies`, `localStorage`, `sessionStorage`, `indexedDB`, `cacheStorage`, `serviceWorkers` (`true`), `apis`, `fingerprint`, `errors`, `csp` and `integrity`. A host is written as `example.com` (that host, any port), `*.example.com` (any subdomain, not the bare domain), `localhost:4411` (with the port), `https://cdn.example.com` (that origin) or `https://cdn.example.com/lib/*` (an address prefix). Names accept `*` at the end or anywhere (`_ga*`).
+
+Every entry may carry a reason, also in `apis` and `fingerprint` (`{ match: 'canvas', reason: 'the game draws on it' }`). The report lists what each entry really let pass under **Allowed on purpose**, with the reason, so that an allow list does not become a place where things disappear.
+
+#### Allowed cookies are still asked for their attributes
+
+A cookie that you allow is not looked at by the `cookies` rule any more, but a cookie that identifies a visitor should still be safe. Turn on `cookieAttributes` (`rules: { cookieAttributes: 'warn' }`, or set `cookieAttributes: { ... }`) and every allowed cookie is checked: it must be `Secure` (not asked on `localhost` and other machine-local hosts), the names in `httpOnly` must be `HttpOnly`, a cookie that a header sets with `SameSite=None` is found (only when the header says so, because browsers differ in what they report as the default), and `maxDays` limits the lifetime. The finding says which attribute is missing.
 
 The options are checked when the test starts, so a typo (`allow.cookie`, a rule that does not exist) fails at once and says which option is wrong.
 
@@ -176,6 +184,7 @@ test('accepting the banner', async ({ page, privacy }) => {
 - **The failure message** groups the findings by rule, names the page, and ends with the `allow` block that would allow them.
 - **Attachments** on every test with findings: `privacy-report.json` (everything, stable format), `privacy-report.html` (a page without script, light and dark, open it from the Playwright HTML report) and `privacy-report.txt`.
 - **Warnings** do not fail the test. They are attached and shown as test annotations.
+- **Allowed on purpose** is a list in the text and the HTML report of a test (and in the report of the whole run): what each allow entry let pass, how often, and the reason you gave. A test that found nothing but used an entry attaches only the JSON, so the report of the run can list it.
 - **A reporter** collects all tests into one page, with one row per problem and the pages and tests it was seen on:
 
   ```ts
@@ -187,7 +196,7 @@ test('accepting the banner', async ({ page, privacy }) => {
 
   It writes `privacy-report/index.html`, `summary.md` and `summary.json`, and adds the table to the summary of a GitHub Actions run (`GITHUB_STEP_SUMMARY`).
 
-  Tests that are meant to fail (`test.fail()`) are left out, and `{ ignore: [/canary/] }` leaves out tests by title, for the ones that make a page misbehave on purpose.
+  The page of the run also has the **Allowed on purpose** table over all tests, so a reviewer sees in one place what the project has decided to let through and why. Tests that are meant to fail (`test.fail()`) are left out, and `{ ignore: [/canary/] }` leaves out tests by title, for the ones that make a page misbehave on purpose.
 
 ### Adopting it in a project that leaks today
 

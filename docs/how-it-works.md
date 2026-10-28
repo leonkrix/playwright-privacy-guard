@@ -41,6 +41,7 @@ Every fact is an `Observation` with the time it happened. A rule is a function `
 - It decides what counts as "your own": the origin of the page at the time (the address of the last main-frame navigation the test made), the `baseURL`, and the `firstParty` entries. A navigation of the main frame is never a leak (the test chose to go there).
 - It asks the **allow lists at the time of the observation** (`privacy.allow()` adds to them from then on). State that is judged at the end (cookies, storage) uses the lists as they are at the end.
 - It leaves out the tabs that **left the site**: a page that another page opened (`page.opener()`) and whose address is not the test's own is another website, and its requests, messages, cookies and storage are not looked at (`away.ts`). The first request of a new tab is made before Playwright knows its frame, so the guard asks again at check time which page it belonged to.
+- It remembers which allow entry let something pass (`allowedBy` in `rules.ts`, collected by the context), so the report can say what is allowed on purpose and why, not only what is wrong.
 - It groups what belongs together: ten requests to one host are one finding with a count.
 - It names the company behind a host (`trackerOf`: the dataset is looked up from the full name up to the registrable part).
 

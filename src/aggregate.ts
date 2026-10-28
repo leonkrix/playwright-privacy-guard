@@ -39,6 +39,8 @@ export interface Row {
 export interface Aggregate {
   /** All tests the reporter saw */
   tests: number;
+  /** What `tests` counts: tests for the reporter, addresses for the command line */
+  unit: string;
   /** Tests that have at least one finding */
   testsWithFindings: number;
   errors: number;
@@ -50,7 +52,11 @@ export interface Aggregate {
 }
 
 /** Puts the findings of all tests together: the same problem on many pages is one row. */
-export function aggregate(entries: readonly TestEntry[], totalTests: number): Aggregate {
+export function aggregate(
+  entries: readonly TestEntry[],
+  totalTests: number,
+  unit = 'tests',
+): Aggregate {
   const rows = new Map<string, Row>();
   const allowed = new Map<string, AllowedRow>();
   let known = 0;
@@ -104,6 +110,7 @@ export function aggregate(entries: readonly TestEntry[], totalTests: number): Ag
   );
   return {
     tests: totalTests,
+    unit,
     testsWithFindings: entries.filter((entry) => entry.report.findings.length > 0).length,
     errors: list.filter((row) => row.level === 'error').length,
     warnings: list.filter((row) => row.level === 'warn').length,
@@ -116,6 +123,10 @@ export function aggregate(entries: readonly TestEntry[], totalTests: number): Ag
         a.what.localeCompare(b.what),
     ),
   };
+}
+
+function capital(text: string): string {
+  return `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
 }
 
 function cell(text: string): string {
@@ -135,7 +146,7 @@ function allowedMarkdown(result: Aggregate): string[] {
     '',
     `### Allowed on purpose (${String(result.allowed.length)})`,
     '',
-    '| Rule | What | Allowed by | Reason | Tests |',
+    `| Rule | What | Allowed by | Reason | ${capital(result.unit)} |`,
     '| --- | --- | --- | --- | --- |',
     ...result.allowed
       .slice(0, 60)
@@ -157,7 +168,7 @@ function allowedHtml(result: Aggregate): string {
   return `<h2>Allowed on purpose (${String(result.allowed.length)})</h2>
 <p class="muted">What the allow entries let pass, and why. Nothing here fails a test.</p>
 <table>
-<thead><tr><th>Rule</th><th>What</th><th>Allowed by</th><th>Reason</th><th>Tests</th></tr></thead>
+<thead><tr><th>Rule</th><th>What</th><th>Allowed by</th><th>Reason</th><th>${capital(result.unit)}</th></tr></thead>
 <tbody>
 ${rows.join('\n')}
 </tbody>
@@ -167,15 +178,15 @@ ${rows.join('\n')}
 /** A table for the summary of a GitHub Actions run, or any Markdown viewer. */
 export function renderMarkdown(result: Aggregate): string {
   if (result.rows.length === 0) {
-    const none = ['## Privacy guard', '', `No findings in ${String(result.tests)} tests.`];
+    const none = ['## Privacy guard', '', `No findings in ${String(result.tests)} ${result.unit}.`];
     return `${[...none, ...allowedMarkdown(result)].join('\n')}\n`;
   }
   const lines = [
     '## Privacy guard',
     '',
-    `${String(result.errors)} errors and ${String(result.warnings)} warnings, in ${String(result.testsWithFindings)} of ${String(result.tests)} tests.${result.known > 0 ? ` ${String(result.known)} known findings from the baseline are left out.` : ''}`,
+    `${String(result.errors)} errors and ${String(result.warnings)} warnings, in ${String(result.testsWithFindings)} of ${String(result.tests)} ${result.unit}.${result.known > 0 ? ` ${String(result.known)} known findings from the baseline are left out.` : ''}`,
     '',
-    '| Level | Rule | What | Who | Pages | Tests |',
+    `| Level | Rule | What | Who | Pages | ${capital(result.unit)} |`,
     '| --- | --- | --- | --- | --- | --- |',
     ...result.rows
       .slice(0, 60)
@@ -198,14 +209,14 @@ export function renderSiteHtml(result: Aggregate): string {
 <div class="counts">
   <div class="count ${result.errors > 0 ? 'error' : 'ok'}"><b>${String(result.errors)}</b>errors</div>
   <div class="count warn"><b>${String(result.warnings)}</b>warnings</div>
-  <div class="count"><b>${String(result.testsWithFindings)} / ${String(result.tests)}</b>tests with findings</div>
+  <div class="count"><b>${String(result.testsWithFindings)} / ${String(result.tests)}</b>${result.unit} with findings</div>
   ${result.known > 0 ? `<div class="count"><b>${String(result.known)}</b>known (baseline)</div>` : ''}
 </div>
 ${
   result.rows.length === 0
     ? '<p>Nothing found. The pages talk to their own origin, set no cookies and store nothing.</p>'
     : `<table>
-<thead><tr><th>Level</th><th>Rule</th><th>What</th><th>Who</th><th>Pages</th><th>Tests</th></tr></thead>
+<thead><tr><th>Level</th><th>Rule</th><th>What</th><th>Who</th><th>Pages</th><th>${capital(result.unit)}</th></tr></thead>
 <tbody>
 ${result.rows
   .map(

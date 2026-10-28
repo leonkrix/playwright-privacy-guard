@@ -4,7 +4,7 @@ A [Playwright](https://playwright.dev) fixture that fails a test when the page i
 
 [![CI](https://github.com/leonkrix/playwright-privacy-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/leonkrix/playwright-privacy-guard/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/playwright-privacy-guard)](https://www.npmjs.com/package/playwright-privacy-guard)
-[![License: MIT](https://img.shields.io/npm/l/playwright-privacy-guard)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/leonkrix/playwright-privacy-guard/badge)](https://scorecard.dev/viewer/?uri=github.com/leonkrix/playwright-privacy-guard)
 
 ```text
@@ -264,4 +264,4 @@ The guard was built for [leonkrix.dev](https://leonkrix.dev), a site that promis
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © Leon Krix

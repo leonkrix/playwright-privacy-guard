@@ -1,0 +1,100 @@
+{
+  "name": "playwright-privacy-guard",
+  "version": "0.0.0",
+  "description": "A Playwright fixture that fails a test when a page talks to other origins, sets cookies, stores data on the device, breaks its Content Security Policy or logs errors. Names the host, the cookie or the script, and how to allow it.",
+  "keywords": [
+    "playwright",
+    "privacy",
+    "gdpr",
+    "cookies",
+    "third-party",
+    "tracking",
+    "csp",
+    "security-headers",
+    "testing",
+    "e2e",
+    "fixture"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Leon Krix",
+    "url": "https://leonkrix.dev"
+  },
+  "homepage": "https://github.com/leonkrix/playwright-privacy-guard#readme",
+  "bugs": {
+    "url": "https://github.com/leonkrix/playwright-privacy-guard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leonkrix/playwright-privacy-guard.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./reporter": {
+      "types": "./dist/reporter.d.ts",
+      "default": "./dist/reporter.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.test.*",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@12.6.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.45.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "pnpm clean && pnpm build",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:package": "publint && attw --pack . --profile esm-only",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:unit": "vitest run",
+    "test": "playwright test",
+    "test:all-browsers": "ALL_BROWSERS=1 playwright test",
+    "trackers": "node scripts/build-trackers.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release:tag": "node scripts/tag-release.mjs",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:unit && pnpm build && pnpm lint:package && pnpm test"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@changesets/cli": "^3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "third-party-web": "^0.30.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}

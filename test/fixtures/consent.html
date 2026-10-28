@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Consent</title>
+  </head>
+  <body>
+    <h1>Consent</h1>
+    <button id="accept">Accept</button>
+    <script>
+      document.getElementById('accept').addEventListener('click', () => {
+        const image = new Image();
+        image.src = 'http://localhost:4411/pixel.gif';
+        document.body.append(image);
+      });
+    </script>
+  </body>
+</html>

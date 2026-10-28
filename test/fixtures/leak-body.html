@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Value in a body</title>
+  </head>
+  <body>
+    <h1>Value in a body</h1>
+    <script>
+      fetch('http://localhost:4411/collect', {
+        method: 'POST',
+        mode: 'no-cors',
+        body: 'name=Jane Doe',
+      });
+    </script>
+  </body>
+</html>

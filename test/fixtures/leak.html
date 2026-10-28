@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Value in a request</title>
+  </head>
+  <body>
+    <h1>Value in a request</h1>
+    <script>
+      fetch('http://localhost:4411/collect?email=jane%40example.com', { mode: 'no-cors' });
+    </script>
+  </body>
+</html>

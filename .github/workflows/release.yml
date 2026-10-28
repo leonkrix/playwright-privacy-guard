@@ -1,0 +1,104 @@
+name: Release
+
+# A release is a tag: after the version commit (`pnpm version-packages`, from the changesets) is on main,
+# `git tag v0.2.0 && git push origin v0.2.0`. See docs/releasing.md.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Stage the release on npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # contents: the GitHub release. id-token: npm trusted publishing and provenance (OIDC).
+    # checks: reading the result of the CI run of this commit
+    permissions:
+      contents: write
+      id-token: write
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The whole history, to see that the tag is on main
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # No registry-url: it would write an .npmrc that asks for a token, and the publish needs none
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: The tag must be on main and match the version in package.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "The commit of $TAG is not on main"
+            exit 1
+          fi
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "Tag $TAG does not match the version $VERSION in package.json"
+            exit 1
+          fi
+
+      # The browser tests ran in the CI of the pull request and again on main. A release only checks
+      # that this very commit passed them, and does not repeat them
+      - name: CI must have passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RESULT="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=CI%20passed&filter=latest" --jq '.check_runs[0].conclusion')"
+          echo "CI passed: $RESULT"
+          if [ "$RESULT" != "success" ]; then
+            echo "The CI of $GITHUB_SHA has not passed (yet). Wait for it and run this workflow again."
+            exit 1
+          fi
+
+      - name: Quick check of what is published
+        run: |
+          pnpm lint
+          pnpm format:check
+          pnpm typecheck
+          pnpm test:unit
+          pnpm build
+          pnpm lint:package
+
+      # Staged publishing needs npm 11.15 or newer, and the npm that comes with Node may be older
+      - name: Current npm
+        run: |
+          npm install --global npm@11
+          npm --version
+
+      # Trusted publishing (OIDC): no token is stored anywhere. The trusted publisher of the package
+      # only allows "stage": the version waits on npmjs.com until a maintainer approves it with
+      # two-factor authentication (docs/releasing.md). Provenance comes with trusted publishing.
+      - name: Stage on npm
+        run: npm stage publish
+
+      - name: GitHub release with the notes of this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          # The section of CHANGELOG.md for this version, without its heading
+          awk -v v="$VERSION" '
+            $0 ~ "^## " v "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Version $VERSION on npm." > notes.md; fi
+          FLAGS=""
+          case "$VERSION" in *-*) FLAGS="--prerelease" ;; esac
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md $FLAGS

@@ -1,0 +1,65 @@
+name: Set up Playwright browsers
+description: Installs the browsers, with a cache for the downloads, and installs system libraries only when a browser cannot start without them
+
+inputs:
+  browsers:
+    description: Space separated browsers, for example "chromium firefox webkit"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The cache is keyed by the Playwright version and not by the lockfile, so that a weekly update of
+    # another dependency does not throw the browsers away
+    - name: Playwright version
+      id: version
+      shell: bash
+      run: echo "playwright=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.version.outputs.playwright }}-${{ inputs.browsers }}
+
+    # Why this is not simply "playwright install --with-deps": the runner image already has the
+    # libraries Chromium and Firefox need. What apt would install for them are fonts, from a mirror
+    # that sometimes delivers a few kilobytes per second for minutes. So the browsers are downloaded
+    # first (a fast download, cached), and apt is only used when a browser really cannot start (WebKit
+    # needs a lot of packages). Every network step has a time limit and is tried again.
+    - name: Install browsers
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: |
+        retry() {
+          for attempt in 1 2 3; do
+            if timeout 200 "$@"; then
+              return 0
+            fi
+            echo "Attempt $attempt did not finish in time, trying again"
+          done
+          return 1
+        }
+
+        retry pnpm exec playwright install $BROWSERS
+
+        if pnpm exec node -e "
+          const playwright = require('@playwright/test');
+          (async () => {
+            for (const name of process.env.BROWSERS.split(' ')) {
+              const browser = await playwright[name].launch();
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(String(error).split('\n')[0]);
+            process.exit(1);
+          });
+        "; then
+          echo "All browsers start, no system libraries are needed"
+          exit 0
+        fi
+
+        echo "A browser cannot start, installing the system libraries"
+        # Give up on a mirror connection that goes quiet, and try a failed package again
+        printf 'Acquire::Retries "5";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' | sudo tee /etc/apt/apt.conf.d/99-ci-retries > /dev/null
+        retry pnpm exec playwright install --with-deps $BROWSERS

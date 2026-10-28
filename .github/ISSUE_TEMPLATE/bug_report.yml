@@ -1,0 +1,31 @@
+name: Bug or false positive
+description: The guard fails a test although the page does nothing wrong, or it misses something that leaks.
+labels: [bug]
+body:
+  - type: textarea
+    id: message
+    attributes:
+      label: The message of the failed test (or what was missed)
+      description: Paste the text the guard printed. It names the rule, the host, cookie or key, and where it came from.
+    validations:
+      required: true
+  - type: textarea
+    id: page
+    attributes:
+      label: Small page that shows it
+      description: The HTML (and script, and response headers if they matter) that reproduce it, as small as you can make it.
+      render: html
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: playwright-privacy-guard, @playwright/test, the browser, Node
+      placeholder: 'guard 0.1.0, Playwright 1.64.1, Chromium, Node 24'
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?

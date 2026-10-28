@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cookie that is set and deleted</title>
+  </head>
+  <body>
+    <h1>Cookie that is set and deleted</h1>
+    <script>
+      document.cookie = 'temp=1; path=/';
+      document.cookie = 'temp=; path=/; max-age=0';
+    </script>
+  </body>
+</html>

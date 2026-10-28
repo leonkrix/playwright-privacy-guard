@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Request without encryption</title>
+  </head>
+  <body>
+    <h1>Request without encryption</h1>
+    <script>
+      fetch('http://insecure.example.test/data', { mode: 'no-cors' }).catch(() => {});
+    </script>
+  </body>
+</html>

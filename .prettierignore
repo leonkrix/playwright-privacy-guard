@@ -1,0 +1,7 @@
+dist/
+pnpm-lock.yaml
+CHANGELOG.md
+privacy-report/
+.probe/
+src/trackers-data.ts
+test-results/

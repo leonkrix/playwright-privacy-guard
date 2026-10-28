@@ -12,6 +12,12 @@ export interface PrivacyReporterOptions {
   githubSummary?: boolean;
   /** Print one line at the end of the run (default true) */
   console?: boolean;
+  /**
+   * Tests that are left out of the report: a text or a regular expression that is searched in the
+   * title of the test (project, file and names). For tests that make a page misbehave on purpose.
+   * A test that is expected to fail (`test.fail()`) is always left out.
+   */
+  ignore?: (string | RegExp)[];
 }
 
 /**
@@ -29,6 +35,7 @@ export default class PrivacyReporter implements Reporter {
       outputDir: options.outputDir ?? 'privacy-report',
       githubSummary: options.githubSummary ?? true,
       console: options.console ?? true,
+      ignore: options.ignore ?? [],
     };
   }
 
@@ -36,8 +43,18 @@ export default class PrivacyReporter implements Reporter {
     return false;
   }
 
+  private ignored(test: TestCase): boolean {
+    const title = test.titlePath().join(' › ');
+    return this.options.ignore.some((entry) =>
+      typeof entry === 'string' ? title.includes(entry) : entry.test(title),
+    );
+  }
+
   onTestEnd(test: TestCase, result: TestResult): void {
     this.tests += 1;
+    if (test.expectedStatus === 'failed' || this.ignored(test)) {
+      return;
+    }
     const attachment = result.attachments.find((item) => item.name === 'privacy-report.json');
     if (attachment === undefined) {
       return;

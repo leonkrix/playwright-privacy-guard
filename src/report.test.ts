@@ -262,6 +262,26 @@ describe('PrivacyReporter', () => {
     expect(log).toHaveBeenCalledWith('Privacy guard: nothing found in 1 tests.');
   });
 
+  it('leaves out tests that are meant to fail and tests that are ignored', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const reporter = new PrivacyReporter({ outputDir: join(directory, 'out'), ignore: [/canary/] });
+    const meant = { ...(testCase('meant to fail') as object), expectedStatus: 'failed' } as never;
+    const canary = {
+      titlePath: () => ['', 'chromium', 'canary.spec.ts', 'a canary'],
+      parent: { project: () => ({ name: 'chromium' }) },
+    } as never;
+    reporter.onTestEnd(meant, result([request('a.test', '/')]));
+    reporter.onTestEnd(canary, result([request('b.test', '/')]));
+    reporter.onTestEnd(testCase('real'), result([request('c.test', '/')]));
+    reporter.onEnd({ status: 'passed' } as never);
+    const summary = JSON.parse(readFileSync(join(directory, 'out', 'summary.json'), 'utf8')) as {
+      rows: { subject: string }[];
+      tests: number;
+    };
+    expect(summary.rows.map((row) => row.subject)).toEqual(['c.test']);
+    expect(summary.tests).toBe(3);
+  });
+
   it('adds the table to the summary of a GitHub run', () => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const summary = join(directory, 'step-summary.md');

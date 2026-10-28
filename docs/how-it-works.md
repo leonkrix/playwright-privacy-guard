@@ -4,16 +4,16 @@ The guard has two halves: what **watches** (it collects plain facts) and what **
 
 ```
   page in the browser                      the test (Node)
-  ┌──────────────────────┐   events   ┌─────────────────────────────────────────┐
-  │ page script (hooks)  │ ─────────▶ │ observations (requests, responses,       │
-  │ - cookie, storage    │            │ console, page errors, page events)       │
-  │ - policy violations  │            │                 │                        │
-  │ - sensitive APIs     │            │                 ▼                        │
-  │ - links, forms, meta │            │ rules (pure) ◀── options, allow lists    │
-  └──────────────────────┘            │                 │                        │
-                                      │                 ▼                        │
-         Playwright events ─────────▶ │ findings ─▶ message, JSON, HTML, reporter│
-                                      └─────────────────────────────────────────┘
+  ┌──────────────────────┐   events    ┌────────────────────────────────────────────┐
+  │ page script (hooks)  │ ─────────▶  │ observations (requests, responses,         │
+  │ - cookie, storage    │             │ console, page errors, page events)         │
+  │ - policy violations  │             │                 │                          │
+  │ - sensitive APIs     │             │                 ▼                          │
+  │ - links, forms, meta │             │ rules (pure) ◀── options, allow lists      │
+  └──────────────────────┘             │                 │                          │
+                                       │                 ▼                          │
+         Playwright events ─────────▶  │ findings ─▶ message, JSON, HTML, reporter  │
+                                       └────────────────────────────────────────────┘
 ```
 
 ## Watching

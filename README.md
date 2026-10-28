@@ -2,9 +2,10 @@
 
 A [Playwright](https://playwright.dev) fixture that fails a test when the page it opens does something it should not: talks to another origin, sets a cookie, stores data on the device, breaks its own Content Security Policy, uses a sensitive browser API or logs an error. The failure names the host, the cookie or the script, says who is behind it, and shows how to allow it if it is meant.
 
-[![npm](https://img.shields.io/npm/v/playwright-privacy-guard)](https://www.npmjs.com/package/playwright-privacy-guard)
 [![CI](https://github.com/leonkrix/playwright-privacy-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/leonkrix/playwright-privacy-guard/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/playwright-privacy-guard)](https://www.npmjs.com/package/playwright-privacy-guard)
 [![License: MIT](https://img.shields.io/npm/l/playwright-privacy-guard)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/leonkrix/playwright-privacy-guard/badge)](https://scorecard.dev/viewer/?uri=github.com/leonkrix/playwright-privacy-guard)
 
 ```text
 Privacy guard: 3 problems (3 errors) on /
@@ -242,7 +243,7 @@ Version `0.x`: the API can change in a minor version, and the changelog says so.
 
 ## Packages and releases
 
-The package is published from GitHub Actions with [npm provenance](https://docs.npmjs.com/generating-provenance-statements): each version links to the commit and the workflow run that built it. See [docs/releasing.md](docs/releasing.md).
+The package is published from GitHub Actions with [npm provenance](https://docs.npmjs.com/generating-provenance-statements): each version links to the commit and the workflow run that built it. See [docs/releasing.md](docs/releasing.md). The repository is checked by CodeQL, OpenSSF Scorecard and a weekly dependency audit; Dependabot keeps dependencies and actions current, and every action is pinned to a commit.
 
 ## Development
 
@@ -256,7 +257,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/how-it-works.md](docs/how-it-wo
 
 ## Origin
 
-Written by [Leon Krix](https://leonkrix.dev), after the same kind of tests grew in the test suite of his own site.
+The guard was built for [leonkrix.dev](https://leonkrix.dev), a site that promises no cookies, nothing stored on the device and no request to any other origin, and where every browser test runs with it. It started as a few checks in that test suite and became a package when they grew, next to [playwright-layout-guard](https://github.com/leonkrix/playwright-layout-guard), which came out of the same suite.
 
 ## License
 
